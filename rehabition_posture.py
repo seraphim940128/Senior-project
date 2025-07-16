@@ -403,7 +403,7 @@ def main():
         "shoulder_abduction_right": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (0, 255, 0)},
         "shoulder_flexion_left": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (0, 0, 255)},
         "shoulder_flexion_right": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (0, 0, 255)},
-        "shoulder_forward_elevation": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (255, 255, 0)},
+        "shoulder_forward_elevation": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (255, 64, 128)},
         "elbow_flexion_left": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (128, 0, 128)},
         "elbow_flexion_right": {"step": -1, "round": 0, "start": False, "start_time": 0, "color": (128, 0, 128)},
     }
