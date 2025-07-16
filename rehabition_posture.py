@@ -371,7 +371,6 @@ def shoulder_forward_elevation_logic(landmarks, w, h,
         else:  
             step       = 1
             start_time = now             
-            error_msg  = "偵測到放下，請維持"
     
     elif step == 1:
         if not pose_up:
