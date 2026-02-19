@@ -279,11 +279,24 @@ def main() -> int:
                         2,
                     )
 
+                if prediction.is_supported and prediction.stable_frames > 0:
+                        bar_x, bar_y = 10, 45
+                        bar_w, bar_h = 200, 15
+                        
+                        progress = min(1.0, prediction.stable_count / prediction.stable_frames)
+                        filled_w = int(bar_w * progress)
+                        
+                        bar_color = (0, 255, 0) if prediction.is_stable else (0, 255, 255)
+                        
+                        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (255, 255, 255), 2)
+                        if filled_w > 0:
+                            cv2.rectangle(frame, (bar_x, bar_y), (bar_x + filled_w, bar_y + bar_h), bar_color, -1)
+
                 if layer3_feedback is not None:
                     cv2.putText(
                         frame,
                         layer3_feedback.get("ui_hint", ""),
-                        (10, 62),
+                        (10, 85),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.58,
                         (0, 90, 255),

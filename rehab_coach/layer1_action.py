@@ -45,6 +45,8 @@ class ActionPrediction:
     is_stable: bool
     segment_id: Optional[int]
     is_supported: bool
+    stable_count: int
+    stable_frames: int
 
 
 class Layer1ActionRecognizer:
@@ -170,4 +172,6 @@ class Layer1ActionRecognizer:
             is_stable=is_stable,
             segment_id=segment_id,
             is_supported=is_supported,
+            stable_count=self._stable_count,
+            stable_frames=self.config.action.stable_frames
         )
