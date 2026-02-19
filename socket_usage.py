@@ -1,3 +1,6 @@
+# python socket_usage.py --device cpu
+# python socket_usage.py --src test_video/shoulder_forward_elevation_80.MOV --device cpu
+
 import socket
 import time
 import argparse
