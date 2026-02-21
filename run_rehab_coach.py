@@ -2,6 +2,8 @@
 # python run_rehab_coach.py --src 0/1
 # python run_rehab_coach.py --src "test_video/elbow_flexion_right_75.MOV"
 # "test_video/shoulder_forward_elevation_80.MOV"
+# python run_rehab_coach.py --src 0 --target-action shoulder_forward_elevation
+# python run_rehab_coach.py --src 0 --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
 from __future__ import annotations
 
 import argparse
@@ -12,10 +14,32 @@ import time
 from pathlib import Path
 from typing import Dict
 
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+def put_text_chinese(img: np.ndarray, text: str, position: tuple, text_color: tuple, font_size: int = 24) -> np.ndarray:
+    import cv2
+    cv2_im_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_im = Image.fromarray(cv2_im_rgb)
+    draw = ImageDraw.Draw(pil_im)
+    
+    try:
+        font = ImageFont.truetype("msjh.ttc", font_size)
+    except IOError:
+        try:
+            font = ImageFont.truetype("simhei.ttf", font_size)
+        except IOError:
+            font = ImageFont.load_default()
+            
+    rgb_color = (text_color[2], text_color[1], text_color[0])
+    draw.text(position, text, font=font, fill=rgb_color)
+    
+    return cv2.cvtColor(np.array(pil_im), cv2.COLOR_RGB2BGR)
 
 def build_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Realtime rehab coach pipeline.")
     parser.add_argument("--src", type=str, default="0", help="Camera index or video path.")
+    parser.add_argument("--target-action", type=str, default=None, help="Target action to track and count.")
     parser.add_argument("--weights", type=str, default=None, help="Action classifier .pt path.")
     parser.add_argument("--yolo", type=str, default=None, help="YOLO weights path.")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
@@ -132,7 +156,6 @@ def print_session_report(history: list):
         dur = seg.get("duration_s", 0.0)
         conf = seg.get("confidence_mean", 0.0)
 
-        # 簡單判斷動作質量：看有沒有被 Layer 3 抓出問題
         posture = item.get("posture_summary", {})
         issues = []
         if posture.get("primary_joint_range") == "insufficient": issues.append("Range")
@@ -215,6 +238,9 @@ def main() -> int:
 
     session_history = []
 
+    target_action_count = 0
+    action_status_msg = "Waiting for action..."
+
     _print_startup(config, device)
 
     try:
@@ -230,7 +256,45 @@ def main() -> int:
 
             if summary is not None:
                 session_history.append(summary)
+
+                print("\n" + "="*50)
+                print(f"[除錯資訊] 動作片段(Segment)結束，觸發判定邏輯")
+                print(f"[除錯資訊] 模型辨識出之動作 (summary action): {summary.get('action')}")
+                print(f"[除錯資訊] 當前設定之目標動作 (args.target_action): {args.target_action}")
+                print(f"[除錯資訊] 片段持續時間: {summary.get('segment', {}).get('duration_s')} 秒")
+                print(f"[除錯資訊] 片段平均信心度: {summary.get('segment', {}).get('confidence_mean')}")
+                print("="*50)
+
                 print(json.dumps(summary, ensure_ascii=False))
+
+                # if args.target_action:
+                #     if summary.get("action") == args.target_action:
+                #         is_success = True 
+                        
+                #         if is_success:
+                #             target_action_count += 1
+                #             action_status_msg = "Action Completed!"
+                #             print(f"\n[系統提示] 動作完成！ {args.target_action} 當前完成次數: {target_action_count}\n")
+                #     else:
+                #         print(f"\n[系統提示] 動作名稱不符，不列入計數。 (需要 {args.target_action}，實際為 {summary.get('action')})\n")
+
+                if args.target_action and summary.get("action") == args.target_action:
+                        posture = summary.get("posture_summary", {})
+                        
+                        is_success = (
+                            posture.get("primary_joint_range") != "insufficient" and
+                            posture.get("compensation") != "excessive" and
+                            posture.get("symmetry") != "imbalanced" and
+                            posture.get("stability") != "unstable"
+                        )
+                        
+                        if is_success:
+                            target_action_count += 1
+                            action_status_msg = "Success!"
+                            print(f"\n[系統提示] 動作成功判定！ {args.target_action} 當前完成次數: {target_action_count}\n")
+                        else:
+                            action_status_msg = "Failed (Posture Issue)"
+                            print(f"\n[系統提示] 動作完成，但不列入計數（姿態品質未達標）。\n")
 
             feedback_event = output["feedback_event"]
 
@@ -293,14 +357,28 @@ def main() -> int:
                             cv2.rectangle(frame, (bar_x, bar_y), (bar_x + filled_w, bar_y + bar_h), bar_color, -1)
 
                 if layer3_feedback is not None:
-                    cv2.putText(
+                    frame = put_text_chinese(
                         frame,
                         layer3_feedback.get("ui_hint", ""),
                         (10, 85),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.58,
-                        (0, 90, 255),
-                        2,
+                        text_color=(0, 90, 255),
+                        font_size=22
+                    )
+
+                if args.target_action:
+                    frame = put_text_chinese(
+                        frame,
+                        f"Target: {args.target_action} | Count: {target_action_count}",
+                        (10, 115),
+                        text_color=(255, 255, 0),
+                        font_size=20
+                    )
+                    frame = put_text_chinese(
+                        frame,
+                        f"Status: {action_status_msg}",
+                        (10, 145),
+                        text_color=(255, 255, 0),
+                        font_size=20
                     )
 
                 cv2.imshow("Rehab Coach", frame)

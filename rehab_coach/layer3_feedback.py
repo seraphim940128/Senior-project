@@ -48,7 +48,7 @@ class Layer3FeedbackGenerator:
         if posture.get("symmetry") == "imbalanced":
             issues.append("左右不夠對稱")
             fixes.append("兩側速度和高度盡量一致")
-        if posture.get("stability") == "unstable":
+        if posture.get("sta a  bility") == "unstable":
             issues.append("動作不夠穩定")
             fixes.append("節奏放慢，維持平順出力")
 
@@ -88,11 +88,10 @@ class Layer3FeedbackGenerator:
             "4. 輸出必須是繁體中文。"
             "5. 回傳格式必須嚴格為 JSON：{\"coach_text\": \"語音播放用的長句\", \"ui_hint\": \"螢幕顯示的短句(5字內)\"}。"
         )
-        # 這裡將視覺演算法計算出的數據轉為自然語言的素材
         user_prompt = (
             f"動作名稱：{action_zh}\n"
-            f"姿態分析摘要：{posture}\n"  # 例如 {'stability': 'unstable', 'compensation': 'excessive'}
-            f"詳細數據指標：{metrics}\n"   # 例如 {'rom': 120, 'score': 0.65}
+            f"姿態分析摘要：{posture}\n"
+            f"詳細數據指標：{metrics}\n"
             "請生成教練反饋 JSON。"
         )
 
