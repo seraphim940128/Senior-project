@@ -226,4 +226,3 @@ $env:OPENAI_API_KEY="your_api_key"
 - `PoseExtractor` 目前會優先使用 `mediapipe.solutions.pose`；只有在該後端不可用時才會嘗試 `--pose-task-model`（Tasks backend）。
 - `README` 已依現有程式碼更新；`socket_usage*.py` 與 `socket_test.py` 為原型/測試腳本，與主流程設定可能不同。
 - 專案含大型模型與測試影片檔案，版本控管時建議注意檔案大小與 `.gitignore`（如 `__pycache__/`）。
-

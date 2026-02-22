@@ -1,7 +1,5 @@
-# python run_rehab_coach.py --src 0 --use-llm
 # python run_rehab_coach.py --src 0/1
 # python run_rehab_coach.py --src "test_video/elbow_flexion_right_75.MOV"
-# "test_video/shoulder_forward_elevation_80.MOV"
 # python run_rehab_coach.py --src 0 --target-action shoulder_forward_elevation
 # python run_rehab_coach.py --src 0 --use-llm --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
 # python run_rehab_coach.py --src 0 --use-llm --llm-model gpt-5-mini --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation

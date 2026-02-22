@@ -61,8 +61,8 @@ class ActionConfig:
 class BaselineProfile:
     rom_max: Dict[str, float] = field(
         default_factory=lambda: {
-            "elbow_flexion_left": 170.0,
-            "elbow_flexion_right": 170.0,
+            "elbow_flexion_left": 145.0,
+            "elbow_flexion_right": 145.0,
             "shoulder_flexion_left": 170.0,
             "shoulder_flexion_right": 170.0,
             "shoulder_abduction_left": 170.0,

@@ -48,7 +48,7 @@ class Layer3FeedbackGenerator:
         if posture.get("symmetry") == "imbalanced":
             issues.append("左右不夠對稱")
             fixes.append("兩側速度和高度盡量一致")
-        if posture.get("sta a  bility") == "unstable":
+        if posture.get("stability") == "unstable":
             issues.append("動作不夠穩定")
             fixes.append("節奏放慢，維持平順出力")
 

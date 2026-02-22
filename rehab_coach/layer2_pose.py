@@ -198,8 +198,19 @@ class Layer2PoseEvaluator:
 
         shoulder_width = max(_distance_2d(ls, rs), 1e-6)
         trunk_lateral_lean = abs((rs[1] - ls[1]) / shoulder_width)
+
+        mid_shoulder_x = (ls[0] + rs[0]) / 2.0
+        mid_shoulder_y = (ls[1] + rs[1]) / 2.0
+        mid_shoulder_z = (ls[2] + rs[2]) / 2.0
+        
+        mid_hip_x = (lh[0] + rh[0]) / 2.0
         mid_hip_y = (lh[1] + rh[1]) / 2.0
-        trunk_backward_lean = abs(nose[1] - mid_hip_y)
+        mid_hip_z = (lh[2] + rh[2]) / 2.0
+
+        trunk_length_2d = float(np.hypot(mid_shoulder_x - mid_hip_x, mid_shoulder_y - mid_hip_y))
+        trunk_length_2d = max(trunk_length_2d, 1e-6)
+
+        trunk_backward_lean = abs(mid_shoulder_z - mid_hip_z) / trunk_length_2d
 
         shoulder_elev_l = abs(lh[1] - ls[1])
         shoulder_elev_r = abs(rh[1] - rs[1])
@@ -268,9 +279,14 @@ class Layer2PoseEvaluator:
             if wrist_above is not None:
                 wrist_above_flags.append(wrist_above)
 
-        primary_peak = max(primary_values)
+        primary_peak = max(primary_values) if primary_values else 0.0
         primary_mean = _mean(primary_values)
-        primary_std = _std(primary_values)
+        
+        if len(primary_values) > 1:
+            diff_values = [primary_values[i] - primary_values[i-1] for i in range(1, len(primary_values))]
+            primary_std = _std(diff_values)
+        else:
+            primary_std = 0.0
 
         comp_mean = _mean(comp_values)
         comp_peak = max(comp_values)
