@@ -1,35 +1,54 @@
-# Project/main - Rehab Coach Initial Architecture
+# Rehab Coach (Project/main)
 
-依 `計劃書.md` 建立的初步整合版本，採三層流程：
+即時復健動作辨識與姿勢回饋管線，整合：
 
-1. Layer 1：YOLO + Transformer 動作辨識（含 `is_stable`/`segment_id`）
-2. Layer 2：MediaPipe 關節點評估（輸出 `metrics` + `posture_summary`）
-3. Layer 3：回饋生成（模板 + 可選 LLM），輸出 `coach_text` / `ui_hint`
+1. Layer 1：YOLO + MobileNet 特徵 + Transformer 動作分類
+2. Layer 2：MediaPipe 姿勢估測與動作品質評估（角度、代償、穩定度）
+3. Layer 3：規則式 / LLM 中文回饋文字
+4. 可選 Unity TCP 單字元指令輸出
 
-## Directory
+主要入口程式為 `run_rehab_coach.py`。
+
+## 功能摘要
+
+- 即時相機或影片輸入（`--src 0` / `--src path/to/video`）
+- 動作穩定段（stable segment）切分與摘要輸出（JSON）
+- 動作品質評估（ROM、代償、對稱、穩定度）
+- 指定目標動作計數（`--target-action`）
+- Unity TCP 控制（可設定門檻與 cooldown）
+- 可選 OpenAI LLM 回饋（`--use-llm`）
+- 視窗預覽與文字疊圖（可用 `--no-window` 關閉）
+- 啟動前自我檢查（`--self-check`）
+
+## 資料夾結構（重點）
 
 ```text
 Project/main/
-  best_transformer_model_25_topk.pt
-  yolo11n.pt
-  run_rehab_coach.py
-  rehab_coach/
-    __init__.py
-    config.py
-    models.py
-    layer1_action.py
-    layer2_pose.py
-    layer3_feedback.py
-    pipeline.py
-    unity_socket.py
+├─ run_rehab_coach.py                  # 主程式
+├─ README.md
+├─ yolo11n.pt                          # YOLO 權重
+├─ best_transformer_model_25_topk.pt   # 主要動作分類權重
+├─ best_transformer_model_max_fold_1.pt # 舊版/實驗腳本使用權重
+├─ pose_landmarker_heavy.task          # MediaPipe Tasks 模型（可選）
+├─ rehab_coach/
+│  ├─ __init__.py
+│  ├─ config.py                        # labels、支援動作、閾值、baseline
+│  ├─ models.py                        # Transformer classifier 與權重載入
+│  ├─ layer1_action.py                 # Layer1 動作辨識
+│  ├─ layer2_pose.py                   # Layer2 姿勢抽取與評估
+│  ├─ layer3_feedback.py               # Layer3 回饋（規則式/LLM）
+│  ├─ pipeline.py                      # 三層流程串接
+│  └─ unity_socket.py                  # Unity TCP client
+├─ test_video/                         # 測試影片範例
+├─ socket_usage.py                     # 舊版/原型腳本（Unity）
+├─ socket_usage_v2.py                  # 舊版/原型腳本（Unity）
+├─ socket_usage_v3.py                  # 舊版/原型腳本（Unity）
+└─ socket_test.py                      # 手動發送 TCP 指令測試
 ```
 
-## Included Weights
+## 支援動作
 
-- 動作分類權重：`Project/main/best_transformer_model_25_topk.pt`
-- YOLO 權重：`Project/main/yolo11n.pt`
-
-## Supported Actions (7)
+目前主流程（stable segment / Layer2 評估）支援 7 種：
 
 - `elbow_flexion_left`
 - `elbow_flexion_right`
@@ -39,62 +58,102 @@ Project/main/
 - `shoulder_abduction_right`
 - `shoulder_forward_elevation`
 
-注意：模型原始類別仍含 `side_tap_left/right`，但此架構已將 side tap 排除，不會進入 stable segment。
+模型分類標籤共 9 種，另外包含：
 
-## Run
+- `side_tap_left`
+- `side_tap_right`
 
-在 `Project/main` 執行：
+注意：`side_tap_*` 目前在 `run_rehab_coach.py` 主流程中不列為 `supported_actions`，因此不會形成 Layer2 摘要段落。
+
+## 安裝需求
+
+建議 Python `3.9+`。
+
+### 必要套件
+
+```bash
+pip install opencv-python mediapipe ultralytics torch torchvision numpy pillow
+```
+
+### 可選套件
+
+- 啟用 LLM 回饋（`--use-llm`）：
+
+```bash
+pip install openai
+```
+
+- 使用 `socket_test.py` 鍵盤測試：
+
+```bash
+pip install keyboard
+```
+
+## 快速開始
+
+在 `Project/main` 目錄執行：
 
 ```bash
 python run_rehab_coach.py --src 0 --device auto
 ```
 
-## Dependencies
+使用影片測試：
 
 ```bash
-pip install opencv-python mediapipe ultralytics torch torchvision numpy
+python run_rehab_coach.py --src "test_video/shoulder_forward_elevation_80.MOV" --device cpu
 ```
 
-可選參數：
+指定目標動作並計數：
+
+```bash
+python run_rehab_coach.py --src 0 --target-action shoulder_forward_elevation
+```
+
+啟用 Unity 與 LLM（範例）：
 
 ```bash
 python run_rehab_coach.py ^
   --src 0 ^
-  --stable-frames 15 ^
-  --stable-conf 0.8 ^
-  --cooldown 1.8 ^
   --unity --unity-host 127.0.0.1 --unity-port 5500 ^
   --unity-conf 0.9 --unity-cooldown 3.0 ^
-  --use-llm --llm-model gpt-4.1-mini
+  --use-llm --llm-model gpt-5-mini
 ```
 
-若你的 mediapipe 版本只有 `tasks`（沒有 `mp.solutions.pose`），可額外指定：
-
-```bash
-python run_rehab_coach.py --src 0 --pose-task-model path\\to\\pose_landmarker.task
-```
-
-自我檢查（依賴 + 模型檔）：
+執行自我檢查（依賴與權重檔存在檢查）：
 
 ```bash
 python run_rehab_coach.py --self-check
 ```
 
-## Unity 單字元控制格式
+無視窗模式（例如遠端/錄製環境）：
 
-目前已改為舊版 `socket_usage.py` 相同格式：
+```bash
+python run_rehab_coach.py --src 0 --no-window
+```
 
-- `shoulder_abduction_left -> u`
-- `shoulder_abduction_right -> o`
-- `shoulder_flexion_left -> j`
-- `shoulder_flexion_right -> l`
-- `shoulder_forward_elevation -> i`
+## CLI 參數（`run_rehab_coach.py`）
 
-當預測置信度達到 `unity-conf`，且超過 `unity-cooldown`，就會透過 TCP 傳送單一字元。
+- `--src`：相機 index 或影片路徑（預設 `0`）
+- `--target-action`：指定目標動作名稱（成功次數統計）
+- `--weights`：動作分類權重 `.pt` 路徑
+- `--yolo`：YOLO 權重 `.pt` 路徑
+- `--device`：`auto|cpu|cuda`
+- `--stable-frames`：穩定段判定所需連續幀數（覆蓋 config）
+- `--stable-conf`：動作置信度門檻（覆蓋 config）
+- `--cooldown`：Layer3 回饋事件 cooldown 秒數（覆蓋 config）
+- `--unity`：啟用 Unity TCP 輸出
+- `--unity-host` / `--unity-port`：Unity TCP 位址
+- `--unity-conf`：發送 Unity 指令置信度門檻
+- `--unity-cooldown`：Unity 指令 cooldown 秒數
+- `--use-llm`：啟用 Layer3 LLM 回饋（需 `OPENAI_API_KEY`）
+- `--llm-model`：LLM 模型名稱（預設 `gpt-5-mini`）
+- `--pose-task-model`：MediaPipe Tasks `.task` 模型路徑（可選）
+- `--self-check`：檢查依賴與模型檔後結束
+- `--no-window`：關閉 OpenCV 視窗
 
-## Output Schema
+## 輸出內容（執行時）
 
-每個 segment 結束時會輸出 JSON（與企劃書一致）：
+主程式在偵測到穩定動作段落結束後，會輸出一筆 JSON 摘要（summary）：
 
 ```json
 {
@@ -123,6 +182,48 @@ python run_rehab_coach.py --self-check
 }
 ```
 
-## Reference
+若觸發回饋事件（姿勢品質不佳且超過 cooldown），也會輸出：
 
-Layer 2 的動作邏輯參考：`Project/else/posture_detection.py`、`Project/else/pose_dection.py`。
+```json
+{
+  "action": "shoulder_forward_elevation",
+  "coach_text": "…",
+  "ui_hint": "…"
+}
+```
+
+## Unity TCP 對接
+
+`run_rehab_coach.py` 使用 `rehab_coach/unity_socket.py`，每次連線送出 1 個字元命令（TCP）。
+
+目前主流程對應如下：
+
+- `shoulder_abduction_left` -> `u`
+- `shoulder_abduction_right` -> `o`
+- `shoulder_flexion_left` -> `j`
+- `shoulder_flexion_right` -> `l`
+- `shoulder_forward_elevation` -> `i`
+
+發送條件：
+
+- 啟用 `--unity`
+- 動作在 `unity_action_map` 中
+- 預測信心值 >= `unity_confidence_threshold`（預設 `0.90`）
+- 距離上次發送時間 >= `unity_command_cooldown_s`（預設 `3.0s`）
+
+## LLM 回饋（可選）
+
+若使用 `--use-llm`，請先設定環境變數（PowerShell）：
+
+```powershell
+$env:OPENAI_API_KEY="your_api_key"
+```
+
+若未安裝 `openai` 套件或未設定 API key，程式會回退到規則式模板回饋。
+
+## 已知注意事項
+
+- `PoseExtractor` 目前會優先使用 `mediapipe.solutions.pose`；只有在該後端不可用時才會嘗試 `--pose-task-model`（Tasks backend）。
+- `README` 已依現有程式碼更新；`socket_usage*.py` 與 `socket_test.py` 為原型/測試腳本，與主流程設定可能不同。
+- 專案含大型模型與測試影片檔案，版本控管時建議注意檔案大小與 `.gitignore`（如 `__pycache__/`）。
+

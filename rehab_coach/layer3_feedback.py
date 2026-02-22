@@ -1,4 +1,4 @@
-# export OPENAI_API_KEY="sk-......"
+#$env:OPENAI_API_KEY="sk-......"
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ ACTION_ZH = {
 @dataclass
 class Layer3FeedbackGenerator:
     use_llm: bool = False
-    model: str = "gpt-4.1-mini"
+    model: str = "gpt-5-mini"
     api_key_env: str = "OPENAI_API_KEY"
 
     def generate(self, summary: Dict) -> Dict[str, str]:
@@ -104,7 +104,7 @@ class Layer3FeedbackGenerator:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_output_tokens=120,
+                max_output_tokens=800,
             )
             text = (getattr(response, "output_text", None) or "").strip()
             if not text:

@@ -1,9 +1,10 @@
-# python run_rehab_coach.py --src 0 --use-llm --llm-model gpt-4o-mini
+# python run_rehab_coach.py --src 0 --use-llm
 # python run_rehab_coach.py --src 0/1
 # python run_rehab_coach.py --src "test_video/elbow_flexion_right_75.MOV"
 # "test_video/shoulder_forward_elevation_80.MOV"
 # python run_rehab_coach.py --src 0 --target-action shoulder_forward_elevation
-# python run_rehab_coach.py --src 0 --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
+# python run_rehab_coach.py --src 0 --use-llm --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
+# python run_rehab_coach.py --src 0 --use-llm --llm-model gpt-5-mini --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,7 @@ def build_args() -> argparse.Namespace:
     parser.add_argument("--unity-conf", type=float, default=None, help="Unity command confidence threshold.")
     parser.add_argument("--unity-cooldown", type=float, default=None, help="Unity command cooldown seconds.")
     parser.add_argument("--use-llm", action="store_true", help="Enable Layer3 LLM generation.")
-    parser.add_argument("--llm-model", type=str, default="gpt-4.1-mini")
+    parser.add_argument("--llm-model", type=str, default="gpt-5-mini")
     parser.add_argument(
         "--pose-task-model",
         type=str,
