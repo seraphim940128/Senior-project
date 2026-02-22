@@ -59,37 +59,39 @@ class ActionConfig:
 
 @dataclass
 class BaselineProfile:
+    # 根據 ADL 功能性閾值與健康平均值下調 ROM 目標
     rom_max: Dict[str, float] = field(
         default_factory=lambda: {
             "elbow_flexion_left": 145.0,
             "elbow_flexion_right": 145.0,
-            "shoulder_flexion_left": 170.0,
-            "shoulder_flexion_right": 170.0,
-            "shoulder_abduction_left": 170.0,
-            "shoulder_abduction_right": 170.0,
-            "shoulder_forward_elevation": 170.0,
+            "shoulder_flexion_left": 140.0,
+            "shoulder_flexion_right": 140.0,
+            "shoulder_abduction_left": 135.0,
+            "shoulder_abduction_right": 135.0,
+            "shoulder_forward_elevation": 135.0,
         }
     )
+    # 軀幹前傾/側彎與聳肩代償之基準
     comp_base: Dict[str, float] = field(
         default_factory=lambda: {
-            "elbow_flexion_left": 0.25,
-            "elbow_flexion_right": 0.25,
-            "shoulder_flexion_left": 0.15,
-            "shoulder_flexion_right": 0.15,
-            "shoulder_abduction_left": 0.25,
-            "shoulder_abduction_right": 0.25,
-            "shoulder_forward_elevation": 0.20,
+            "elbow_flexion_left": 5.0,
+            "elbow_flexion_right": 5.0,
+            "shoulder_flexion_left": 5.0,
+            "shoulder_flexion_right": 5.0,
+            "shoulder_abduction_left": 5.0,
+            "shoulder_abduction_right": 5.0,
+            "shoulder_forward_elevation": 5.0,
         }
     )
     comp_std: Dict[str, float] = field(
         default_factory=lambda: {
-            "elbow_flexion_left": 0.08,
-            "elbow_flexion_right": 0.08,
-            "shoulder_flexion_left": 0.06,
-            "shoulder_flexion_right": 0.06,
-            "shoulder_abduction_left": 0.08,
-            "shoulder_abduction_right": 0.08,
-            "shoulder_forward_elevation": 0.08,
+            "elbow_flexion_left": 2.5,
+            "elbow_flexion_right": 2.5,
+            "shoulder_flexion_left": 2.5,
+            "shoulder_flexion_right": 2.5,
+            "shoulder_abduction_left": 2.5,
+            "shoulder_abduction_right": 2.5,
+            "shoulder_forward_elevation": 2.5,
         }
     )
     stability_base: Dict[str, float] = field(
@@ -120,7 +122,6 @@ class BaselineProfile:
     symmetry_std: Dict[str, float] = field(
         default_factory=lambda: {"shoulder_forward_elevation": 5.0}
     )
-
 
 @dataclass
 class AppConfig:

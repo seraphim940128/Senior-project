@@ -16,6 +16,7 @@ from .models import OnlineFeatureBuffer, load_classifier
 
 
 def letterbox_224(rgb_frame: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
+    """將影像縮放並補邊至 224x224，回傳影像與縮放與位移資訊。"""
     height, width = rgb_frame.shape[:2]
     scale = 224.0 / max(height, width)
     new_h = int(round(height * scale))
@@ -40,6 +41,7 @@ def letterbox_224(rgb_frame: np.ndarray) -> Tuple[np.ndarray, float, int, int]:
 
 @dataclass
 class ActionPrediction:
+    """動作辨識結果。"""
     action_label: str
     confidence: float
     is_stable: bool
@@ -50,6 +52,7 @@ class ActionPrediction:
 
 
 class Layer1ActionRecognizer:
+    """動作辨識器：整合 YOLO 人體偵測、MobileNet 特徵提取與 Transformer 分類。"""
     def __init__(self, config: AppConfig, device: torch.device):
         self.config = config
         self.device = device
@@ -151,6 +154,7 @@ class Layer1ActionRecognizer:
         if feature is None:
             if not self.buffer.ready():
                 return None
+            # 若偵測不到人體，使用緩衝區的最後一個特徵
             feature = self.buffer.last()
 
         self.buffer.push(feature)

@@ -1,5 +1,3 @@
-"""Rehab coach pipeline package."""
-
 __all__ = [
     "config",
     "layer1_action",

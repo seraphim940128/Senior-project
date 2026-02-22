@@ -237,6 +237,8 @@ def main() -> int:
 
     session_history = []
 
+    all_actions_count = {action: 0 for action in config.supported_actions}
+
     target_action_count = 0
     action_status_msg = "Waiting for action..."
 
@@ -254,46 +256,61 @@ def main() -> int:
             summary = output["summary"]
 
             if summary is not None:
+
+                duration = summary.get("segment", {}).get("duration_s", 0.0)
+                if duration < 1.0:
+                    print(f"\n[系統提示] 動作片段過短 ({duration} 秒)，視為模型檢測雜訊，略過不計。\n")
+                    feedback_event = output["feedback_event"]
+                    continue
+
                 session_history.append(summary)
 
                 print("\n" + "="*50)
-                print(f"[除錯資訊] 動作片段(Segment)結束，觸發判定邏輯")
-                print(f"[除錯資訊] 模型辨識出之動作 (summary action): {summary.get('action')}")
-                print(f"[除錯資訊] 當前設定之目標動作 (args.target_action): {args.target_action}")
-                print(f"[除錯資訊] 片段持續時間: {summary.get('segment', {}).get('duration_s')} 秒")
-                print(f"[除錯資訊] 片段平均信心度: {summary.get('segment', {}).get('confidence_mean')}")
+                print(f"[DEBUG] 動作片段(Segment)結束，觸發判定邏輯")
+                print(f"[DEBUG] 模型辨識出之動作 (summary action): {summary.get('action')}")
+                print(f"[DEBUG] 當前設定之目標動作 (args.target_action): {args.target_action}")
+                print(f"[DEBUG] 片段持續時間: {summary.get('segment', {}).get('duration_s')} 秒")
+                print(f"[DEBUG] 片段平均信心度: {summary.get('segment', {}).get('confidence_mean')}")
                 print("="*50)
 
                 print(json.dumps(summary, ensure_ascii=False))
 
-                # if args.target_action:
-                #     if summary.get("action") == args.target_action:
-                #         is_success = True 
-                        
-                #         if is_success:
-                #             target_action_count += 1
-                #             action_status_msg = "Action Completed!"
-                #             print(f"\n[系統提示] 動作完成！ {args.target_action} 當前完成次數: {target_action_count}\n")
-                #     else:
-                #         print(f"\n[系統提示] 動作名稱不符，不列入計數。 (需要 {args.target_action}，實際為 {summary.get('action')})\n")
+                posture = summary.get("posture_summary", {})
+                
+                # 1. 關節活動度得分 (滿分 50)
+                rom_status = posture.get("primary_joint_range")
+                score_rom = 50 if rom_status == "good" else (35 if rom_status == "acceptable" else 10)
+                
+                # 2. 代償行為得分 (滿分 30)
+                comp_status = posture.get("compensation")
+                score_comp = 30 if comp_status == "none" else (15 if comp_status == "mild" else 0)
+                
+                # 3. 穩定度得分 (滿分 20)
+                stab_status = posture.get("stability")
+                score_stab = 20 if stab_status == "stable" else 0
+                
+                total_score = score_rom + score_comp + score_stab
+                is_success = total_score >= 60
 
-                if args.target_action and summary.get("action") == args.target_action:
-                        posture = summary.get("posture_summary", {})
-                        
-                        is_success = (
-                            posture.get("primary_joint_range") != "insufficient" and
-                            posture.get("compensation") != "excessive" and
-                            posture.get("symmetry") != "imbalanced" and
-                            posture.get("stability") != "unstable"
-                        )
-                        
+                action_name = summary.get("action")
+
+                if args.target_action:
+                    if action_name == args.target_action:
                         if is_success:
                             target_action_count += 1
-                            action_status_msg = "Success!"
-                            print(f"\n[系統提示] 動作成功判定！ {args.target_action} 當前完成次數: {target_action_count}\n")
+                            action_status_msg = f"Success! (Score: {total_score})"
+                            print(f"\n[系統提示] 動作成功判定！ {args.target_action} 當前完成次數: {target_action_count}，總分: {total_score}\n")
                         else:
-                            action_status_msg = "Failed (Posture Issue)"
-                            print(f"\n[系統提示] 動作完成，但不列入計數（姿態品質未達標）。\n")
+                            action_status_msg = f"Failed (Score: {total_score})"
+                            print(f"\n[系統提示] 動作完成，但不列入計數（總分 {total_score} 未達及格線 60 分）。\n")
+                else:
+                    if is_success and action_name in all_actions_count:
+                        all_actions_count[action_name] += 1
+                        action_status_msg = f"{action_name} Success! (Score: {total_score})"
+                        print(f"\n[系統提示] 動作成功判定！ {action_name} 當前完成次數: {all_actions_count[action_name]}，總分: {total_score}\n")
+                    elif not is_success:
+                        action_status_msg = f"Failed (Score: {total_score})"
+                        print(f"\n[系統提示] {action_name} 動作完成，但不列入計數（總分 {total_score} 未達及格線 60 分）。\n")
 
             feedback_event = output["feedback_event"]
 
@@ -376,6 +393,25 @@ def main() -> int:
                         frame,
                         f"Status: {action_status_msg}",
                         (10, 145),
+                        text_color=(255, 255, 0),
+                        font_size=20
+                    )
+                else:
+                    start_y = 115
+                    for action_name, count in all_actions_count.items():
+                        frame = put_text_chinese(
+                            frame,
+                            f"{action_name}: {count}",
+                            (10, start_y),
+                            text_color=(255, 255, 0),
+                            font_size=20
+                        )
+                        start_y += 30
+                    
+                    frame = put_text_chinese(
+                        frame,
+                        f"Status: {action_status_msg}",
+                        (10, start_y),
                         text_color=(255, 255, 0),
                         font_size=20
                     )

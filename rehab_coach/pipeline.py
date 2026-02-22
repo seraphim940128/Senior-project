@@ -9,6 +9,8 @@ from .layer2_pose import Layer2PoseEvaluator, PoseExtractor, SegmentFrame
 
 
 class RehabCoachPipeline:
+    """整合 Layer1 與 Layer2，輸出片段摘要與回饋事件。"""
+
     def __init__(
         self,
         layer1: Layer1ActionRecognizer,

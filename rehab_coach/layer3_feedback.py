@@ -39,28 +39,51 @@ class Layer3FeedbackGenerator:
         issues = []
         fixes = []
 
+        is_elbow = "elbow" in action
+        is_abduction = "abduction" in action
+        is_flexion_or_elevation = "flexion" in action and "shoulder" in action or "elevation" in action
+
+        # 1. 關節活動度
         if posture.get("primary_joint_range") == "insufficient":
             issues.append("動作幅度還不夠")
-            fixes.append("再抬高一點，慢慢到可控制的最高點")
+            if is_elbow:
+                fixes.append("手盡量往肩膀方向彎曲靠攏")
+            elif is_abduction:
+                fixes.append("手臂再往側邊抬高一點")
+            else:
+                fixes.append("手臂再往上抬高一點，慢慢到可控制的最高點")
+                
+        # 2. 異常代償行為
         if posture.get("compensation") == "excessive":
-            issues.append("有明顯代償")
-            fixes.append("先放鬆肩膀，軀幹保持正中")
+            issues.append("有明顯代償行為")
+            if is_elbow:
+                fixes.append("上臂請貼緊身體，不要利用肩膀力量甩動")
+            elif is_abduction:
+                fixes.append("身體不要往對側傾斜，放鬆斜方肌避免聳肩")
+            else:
+                fixes.append("注意不要聳肩，保持軀幹挺直不要往後仰")
+
+        # 3. 對稱性
         if posture.get("symmetry") == "imbalanced":
-            issues.append("左右不夠對稱")
-            fixes.append("兩側速度和高度盡量一致")
+            issues.append("左右動作不夠對稱")
+            fixes.append("注意兩側發力與高度盡量保持一致")
+
+        # 4. 動態穩定度
         if posture.get("stability") == "unstable":
-            issues.append("動作不夠穩定")
-            fixes.append("節奏放慢，維持平順出力")
+            issues.append("動作軌跡不夠穩定")
+            fixes.append("放慢動作節奏，維持平順出力不要抖動")
 
         if not issues:
-            coach_text = f"{action_zh}做得很好，維持現在的節奏和姿勢。"
-            ui_hint = "動作穩定，繼續保持"
+            coach_text = f"{action_zh}做得很好，動作標準且穩定，請繼續保持這份感覺！"
+            ui_hint = "動作標準，繼續保持"
             return {"coach_text": coach_text, "ui_hint": ui_hint}
 
         issue_text = "、".join(issues[:2])
         fix_text = "；".join(fixes[:2])
-        coach_text = f"{action_zh}目前{issue_text}，{fix_text}。你做得不錯，繼續加油。"
-        ui_hint = fixes[0] if fixes else "保持穩定"
+        
+        coach_text = f"{action_zh}目前{issue_text}，建議{fix_text}。調整一下，你做得不錯，繼續加油。"
+        ui_hint = fixes[0] if fixes else "注意控制動作"
+        
         return {"coach_text": coach_text, "ui_hint": ui_hint}
 
     def _generate_with_llm(self, summary: Dict) -> Optional[Dict[str, str]]:
