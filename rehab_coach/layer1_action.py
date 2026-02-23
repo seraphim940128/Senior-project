@@ -86,6 +86,9 @@ class Layer1ActionRecognizer:
         self._in_stable = False
         self._stable_label: Optional[str] = None
         self._segment_id = 0
+        
+        self._patience_frames = 5
+        self._patience_count = 0
 
     def _extract_feature(self, frame: np.ndarray) -> Optional[torch.Tensor]:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -127,14 +130,20 @@ class Layer1ActionRecognizer:
 
     def _update_stability(self, label: str, confidence: float) -> Tuple[bool, Optional[int]]:
         threshold = self.config.action.confidence_threshold
-        if confidence >= threshold and label == self._last_label:
+        
+        if confidence >= threshold and (label == self._last_label or self._stable_count == 0):
             self._stable_count += 1
-        elif confidence >= threshold:
-            self._stable_count = 1
+            self._patience_count = 0
+            self._last_label = label
+        elif self._in_stable and self._patience_count < self._patience_frames:
+            self._patience_count += 1
+            label = self._stable_label 
+            self._stable_count += 1
         else:
             self._stable_count = 0
+            self._patience_count = 0
+            self._last_label = label
 
-        self._last_label = label
         is_supported = label in self.config.supported_actions
         is_stable = self._stable_count >= self.config.action.stable_frames and is_supported
 
@@ -154,7 +163,6 @@ class Layer1ActionRecognizer:
         if feature is None:
             if not self.buffer.ready():
                 return None
-            # 若偵測不到人體，使用緩衝區的最後一個特徵
             feature = self.buffer.last()
 
         self.buffer.push(feature)
@@ -168,10 +176,13 @@ class Layer1ActionRecognizer:
         label = self.config.model_labels[pred_idx]
         confidence = float(probs[pred_idx])
         is_supported = label in self.config.supported_actions
+        
         is_stable, segment_id = self._update_stability(label, confidence)
 
+        display_label = self._stable_label if self._in_stable and self._patience_count > 0 else label
+
         return ActionPrediction(
-            action_label=label,
+            action_label=display_label,
             confidence=confidence,
             is_stable=is_stable,
             segment_id=segment_id,

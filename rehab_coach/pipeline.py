@@ -32,7 +32,7 @@ class RehabCoachPipeline:
         posture = summary.get("posture_summary", {})
         return (
             posture.get("primary_joint_range") == "insufficient"
-            or posture.get("compensation") == "excessive"
+            or posture.get("compensation") != "none"  # 修改這裡：只要不是 none 就觸發反饋
             or posture.get("symmetry") == "imbalanced"
             or posture.get("stability") == "unstable"
         )

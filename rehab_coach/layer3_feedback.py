@@ -54,14 +54,19 @@ class Layer3FeedbackGenerator:
                 fixes.append("手臂再往上抬高一點，慢慢到可控制的最高點")
                 
         # 2. 異常代償行為
-        if posture.get("compensation") == "excessive":
-            issues.append("有明顯代償行為")
+        comp_status = posture.get("compensation", "none")
+        if "trunk_lean" in comp_status:
+            issues.append("軀幹出現代償偏移")
             if is_elbow:
-                fixes.append("上臂請貼緊身體，不要利用肩膀力量甩動")
+                fixes.append("請保持身體直立，不要前後搖晃")
             elif is_abduction:
-                fixes.append("身體不要往對側傾斜，放鬆斜方肌避免聳肩")
+                fixes.append("身體不要往對側傾斜")
             else:
-                fixes.append("注意不要聳肩，保持軀幹挺直不要往後仰")
+                fixes.append("保持軀幹挺直，不要往後仰或前傾")
+                
+        if "shoulder_hiking" in comp_status:
+            issues.append("有明顯聳肩代償")
+            fixes.append("請放鬆斜方肌，刻意將肩膀下壓")
 
         # 3. 對稱性
         if posture.get("symmetry") == "imbalanced":
@@ -109,7 +114,7 @@ class Layer3FeedbackGenerator:
             "2. 針對 'metrics' 中的具體數值（如角度）進行模糊化指導（例如：'手臂再抬高一點' 而不是 '目前只有 85 度'）。"
             "3. 如果 'posture_summary' 中有問題，優先指出最嚴重的一個。"
             "4. 輸出必須是繁體中文。"
-            "5. 回傳格式必須嚴格為 JSON：{\"coach_text\": \"語音播放用的長句\", \"ui_hint\": \"螢幕顯示的短句(5字內)\"}。"
+            "5. 回傳格式必須嚴格為 JSON：{\"coach_text\": \"語音播放用的長句\", \"ui_hint\": \"螢幕顯示的短句(15字內)\"}。"
         )
         user_prompt = (
             f"動作名稱：{action_zh}\n"
@@ -120,16 +125,18 @@ class Layer3FeedbackGenerator:
 
         try:
             client = OpenAI(api_key=api_key)
-            response = client.responses.create(
+            response = client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_output_tokens=800,
+                max_completion_tokens=800,
+                response_format={"type": "json_object"}
             )
-            text = (getattr(response, "output_text", None) or "").strip()
+            
+            text = response.choices[0].message.content.strip()
             if not text:
                 return None
 
@@ -143,5 +150,6 @@ class Layer3FeedbackGenerator:
             if not ui_hint:
                 ui_hint = "保持穩定"
             return {"coach_text": coach_text, "ui_hint": ui_hint}
-        except Exception:
+        except Exception as e:
+            print(f"\n[LLM 錯誤] API 呼叫失敗: {e}\n")
             return None

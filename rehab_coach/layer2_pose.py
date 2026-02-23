@@ -56,7 +56,27 @@ class SegmentFrame:
     timestamp: float
     confidence: float
     landmarks: Landmarks
+class LandmarkFilter:
+    """用於平滑 MediaPipe 輸出座標的指數平滑濾波器"""
+    def __init__(self, alpha: float = 0.5):
+        self.alpha = alpha
+        self.filtered_landmarks: Optional[Landmarks] = None
 
+    def update(self, current_landmarks: Landmarks) -> Landmarks:
+        if self.filtered_landmarks is None:
+            self.filtered_landmarks = current_landmarks.copy()
+            return self.filtered_landmarks
+
+        for key in current_landmarks:
+            if key in self.filtered_landmarks:
+                curr_x, curr_y, curr_z = current_landmarks[key]
+                prev_x, prev_y, prev_z = self.filtered_landmarks[key]
+                new_x = prev_x + self.alpha * (curr_x - prev_x)
+                new_y = prev_y + self.alpha * (curr_y - prev_y)
+                new_z = prev_z + self.alpha * (curr_z - prev_z)
+                self.filtered_landmarks[key] = (new_x, new_y, new_z)
+        return self.filtered_landmarks.copy()
+    
 def _calculate_kinematics_derivatives(positions: List[np.ndarray], timestamps: List[float]) -> Tuple[np.ndarray, np.ndarray, float]:
     """計算給定 3D 軌跡的速度與加速度大小，並回傳平均採樣頻率"""
     if len(positions) < 3:
@@ -65,16 +85,13 @@ def _calculate_kinematics_derivatives(positions: List[np.ndarray], timestamps: L
     pos_arr = np.array(positions)
     t_arr = np.array(timestamps)
     
-    # 計算時間差與平均採樣率
     dt = np.diff(t_arr)
     dt[dt <= 0] = 1e-3 
     fs = 1.0 / np.mean(dt)
     
-    # 一階微分：速度
     dp = np.linalg.norm(np.diff(pos_arr, axis=0), axis=1)
     velocity = dp / dt
     
-    # 二階微分：加速度
     dv = np.diff(velocity)
     dt_a = dt[1:]
     acceleration = dv / dt_a
@@ -89,16 +106,13 @@ def _calculate_sparc(velocity_profile: np.ndarray, fs: float, fc: float = 10.0) 
     if len(velocity_profile) < 5:
         return 0.0
         
-    # 進行快速傅立葉轉換 (FFT)
     nfft = int(pow(2, np.ceil(np.log2(len(velocity_profile))) + 4))
     V = np.fft.rfft(velocity_profile, n=nfft)
     freqs = np.fft.rfftfreq(nfft, d=1.0/fs)
     
-    # 頻譜幅度正規化
     V_mag = np.abs(V)
     V_mag_norm = V_mag / (max(V_mag[0], 1e-6))
     
-    # 擷取目標低頻帶 (0 到 fc)
     indices = np.where(freqs <= fc)[0]
     if len(indices) < 2:
         return 0.0
@@ -106,11 +120,9 @@ def _calculate_sparc(velocity_profile: np.ndarray, fs: float, fc: float = 10.0) 
     V_band = V_mag_norm[indices]
     f_band = freqs[indices]
     
-    # 計算頻譜曲線之弧長
     df = f_band[1] - f_band[0]
     dV_df = np.diff(V_band) / df
     
-    # SPARC 是一個無因次的負值指標
     arc_length = np.sum(np.sqrt((1.0/fc)**2 + dV_df**2)) * df
     return float(-arc_length)
 
@@ -245,27 +257,22 @@ class Layer2PoseEvaluator:
         lw, rw = np.array(lm["LEFT_WRIST"]), np.array(lm["RIGHT_WRIST"])
         lh, rh = np.array(lm["LEFT_HIP"]), np.array(lm["RIGHT_HIP"])
 
-        # 定義 MediaPipe 空間中的垂直向上向量
         up_vec = np.array([0.0, -1.0, 0.0])
 
-        # 1. 軀幹代償計算 (Trunk Compensation)
         mid_shoulder = (ls + rs) / 2.0
         mid_hip = (lh + rh) / 2.0
         tr_vec = mid_shoulder - mid_hip
         
-        # 矢狀面前傾/後傾 (Y-Z 平面投影)
-        trunk_sagittal = _vector_angle(np.array([0.0, tr_vec[1], tr_vec[2]]), up_vec)
-        # 額狀面側彎 (X-Y 平面投影)
-        trunk_frontal = _vector_angle(np.array([tr_vec[0], tr_vec[1], 0.0]), up_vec)
-        trunk_comp_angle = max(trunk_sagittal, trunk_frontal)
+        z_penalty = 0.3
+        tr_vec_penalized = np.array([tr_vec[0], tr_vec[1], tr_vec[2] * z_penalty])
 
-        # 2. 肢體長度 (用於後續聳肩位移標準化)
+        trunk_sagittal = _vector_angle(np.array([0.0, tr_vec_penalized[1], tr_vec_penalized[2]]), up_vec)
+        trunk_frontal = _vector_angle(np.array([tr_vec_penalized[0], tr_vec_penalized[1], 0.0]), up_vec)
+
         arm_len_l = max(np.linalg.norm(le - ls) + np.linalg.norm(lw - le), 1e-6)
         arm_len_r = max(np.linalg.norm(re - rs) + np.linalg.norm(rw - re), 1e-6)
 
-        # 3. 典型關節角度 (Primary ROM) 計算
         primary_angle = 0.0
-        
         if "elbow_flexion_left" in action:
             primary_angle = 180.0 - _vector_angle(le - ls, lw - le)
         elif "elbow_flexion_right" in action:
@@ -283,15 +290,16 @@ class Layer2PoseEvaluator:
             se_r_xy = np.array([re[0] - rs[0], re[1] - rs[1], 0.0])
             primary_angle = _vector_angle(se_r_xy, up_vec)
         elif "shoulder_forward_elevation" in action:
-            scaption_l = _vector_angle(le - ls, up_vec)
-            scaption_r = _vector_angle(re - rs, up_vec)
-            primary_angle = max(scaption_l, scaption_r)
+            shoulder_flex_l = _vector_angle(ls - lh, le - ls)
+            shoulder_flex_r = _vector_angle(rs - rh, re - rs)
+            primary_angle = max(shoulder_flex_l, shoulder_flex_r)
 
         return {
             "primary": primary_angle,
-            "trunk_comp": trunk_comp_angle,
-            "shoulder_y_l": ls[1],
-            "shoulder_y_r": rs[1],
+            "trunk_sagittal": trunk_sagittal,
+            "trunk_frontal": trunk_frontal,
+            "sh_to_hip_l": lh[1] - ls[1],
+            "sh_to_hip_r": rh[1] - rs[1],
             "arm_len_l": arm_len_l,
             "arm_len_r": arm_len_r
         }
@@ -300,53 +308,90 @@ class Layer2PoseEvaluator:
         if not frames:
             return None
 
-        kinematics_seq = [self._extract_frame_kinematics(action, f.landmarks) for f in frames]
+        lm_filter = LandmarkFilter(alpha=0.5)
+        filtered_kinematics_seq = []
+        for f in frames:
+            smoothed_lm = lm_filter.update(f.landmarks)
+            filtered_kinematics_seq.append(self._extract_frame_kinematics(action, smoothed_lm))
         
+        kinematics_seq = filtered_kinematics_seq
+        
+        # 關節活動度 (ROM)
         primary_values = [k["primary"] for k in kinematics_seq]
-        trunk_comp_values = [k["trunk_comp"] for k in kinematics_seq]
-        
-        initial_trunk = np.mean(trunk_comp_values[:3]) if len(trunk_comp_values) >= 3 else trunk_comp_values[0]
-        relative_trunk_comp = [abs(val - initial_trunk) for val in trunk_comp_values]
-
         primary_peak = max(primary_values)
         primary_mean = _mean(primary_values)
         primary_std = _std([primary_values[i] - primary_values[i-1] for i in range(1, len(primary_values))]) if len(primary_values) > 1 else 0.0
         
-        comp_peak = max(relative_trunk_comp) if relative_trunk_comp else 0.0
-        comp_mean = _mean(relative_trunk_comp)
-
         rom_max = self.baseline.rom_max.get(action, 135.0)
         reach_ratio = primary_peak / max(rom_max, 1e-6)
-
-        comp_base = self.baseline.comp_base.get(action, 5.0)
-        comp_std = self.baseline.comp_std.get(action, 2.5)
-
         primary_status = "good" if reach_ratio >= 0.90 else ("acceptable" if reach_ratio >= 0.75 else "insufficient")
-        
-        if comp_peak <= comp_base + comp_std:
-            comp_status = "none"
-        elif comp_peak <= comp_base + 3.0 * comp_std:
-            comp_status = "mild"
-        else:
-            comp_status = "excessive"
 
-        # ======== 計算 SPARC 與 RMS ========
+        # 代償行為量化
+        comp_issues = []
+
+        init_sagittal = np.mean([k["trunk_sagittal"] for k in kinematics_seq[:3]]) if len(kinematics_seq) >= 3 else kinematics_seq[0]["trunk_sagittal"]
+        init_frontal = np.mean([k["trunk_frontal"] for k in kinematics_seq[:3]]) if len(kinematics_seq) >= 3 else kinematics_seq[0]["trunk_frontal"]
+        
+        max_sagittal_dev = max([abs(k["trunk_sagittal"] - init_sagittal) for k in kinematics_seq])
+        max_frontal_dev = max([abs(k["trunk_frontal"] - init_frontal) for k in kinematics_seq])
+        
+        if "elbow" in action:
+            sagittal_thresh, frontal_thresh = 10.0, 10.0
+        elif "forward_elevation" in action:
+            sagittal_thresh, frontal_thresh = 25.0, 15.0 
+        else: 
+            sagittal_thresh, frontal_thresh = 20.0, 15.0
+            
+        if max_sagittal_dev > sagittal_thresh or max_frontal_dev > frontal_thresh:
+            comp_issues.append("trunk_lean")
+
+        is_left_action = "left" in action or "elevation" in action
+        is_right_action = "right" in action or "elevation" in action
+        
+        hiking_detected = False
+        
+        dynamic_hiking_thresh = 0.08 + 0.10 * (min(primary_peak, 180.0) / 180.0)
+
+        if is_left_action:
+            init_sh_dist_l = np.mean([k["sh_to_hip_l"] for k in kinematics_seq[:3]])
+            max_sh_dist_l = max([k["sh_to_hip_l"] for k in kinematics_seq])
+            arm_len_l = kinematics_seq[0]["arm_len_l"]
+            sv_norm_l = max(0.0, (max_sh_dist_l - init_sh_dist_l)) / arm_len_l
+            if sv_norm_l > dynamic_hiking_thresh:
+                hiking_detected = True
+
+        if is_right_action:
+            init_sh_dist_r = np.mean([k["sh_to_hip_r"] for k in kinematics_seq[:3]])
+            max_sh_dist_r = max([k["sh_to_hip_r"] for k in kinematics_seq])
+            arm_len_r = kinematics_seq[0]["arm_len_r"]
+            sv_norm_r = max(0.0, (max_sh_dist_r - init_sh_dist_r)) / arm_len_r
+            if sv_norm_r > dynamic_hiking_thresh:
+                hiking_detected = True
+
+        if hiking_detected:
+            comp_issues.append("shoulder_hiking")
+
+        if not comp_issues:
+            comp_status = "none"
+        else:
+            comp_status = ",".join(comp_issues)
+
+        # 計算 SPARC 與 RMS
         target_joint_positions = []
         for f in frames:
             if "left" in action:
                 target_joint_positions.append(np.array(f.landmarks["LEFT_WRIST"]))
-            else:
+            elif "right" in action:
                 target_joint_positions.append(np.array(f.landmarks["RIGHT_WRIST"]))
+            else:
+                target_joint_positions.append((np.array(f.landmarks["LEFT_WRIST"]) + np.array(f.landmarks["RIGHT_WRIST"])) / 2.0)
         
         timestamps = [f.timestamp for f in frames]
-        
         velocity, acceleration, fs = _calculate_kinematics_derivatives(target_joint_positions, timestamps)
-        
         sparc_val = _calculate_sparc(velocity, fs, fc=10.0)
         rms_acc = _calculate_rms(acceleration)
 
         stability_status = "stable" if (sparc_val >= -6.0 and rms_acc <= 8.0) else "unstable"
-
         segment_duration = max(0.0, frames[-1].timestamp - frames[0].timestamp)
 
         return {
@@ -361,8 +406,7 @@ class Layer2PoseEvaluator:
                 "primary_mean": round(primary_mean, 3),
                 "primary_std": round(primary_std, 3),
                 "reach_ratio": round(reach_ratio, 3),
-                "comp_peak": round(comp_peak, 3),
-                "comp_mean": round(comp_mean, 3),
+                "trunk_dev_max": round(max(max_sagittal_dev, max_frontal_dev), 3),
                 "sparc": round(sparc_val, 3),
                 "rms_acc": round(rms_acc, 3),
             },

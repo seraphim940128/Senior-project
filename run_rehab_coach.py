@@ -1,8 +1,6 @@
-# python run_rehab_coach.py --src 0/1
-# python run_rehab_coach.py --src "test_video/elbow_flexion_right_75.MOV"
-# python run_rehab_coach.py --src 0 --target-action shoulder_forward_elevation
-# python run_rehab_coach.py --src 0 --use-llm --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
-# python run_rehab_coach.py --src 0 --use-llm --llm-model gpt-5-mini --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
+# python run_rehab_coach.py --src 0 --pose-task-model pose_landmarker_heavy.task
+# python run_rehab_coach.py --src 0 --pose-task-model pose_landmarker_heavy.task --target-action shoulder_forward_elevation
+# python run_rehab_coach.py --src 0 --use-llm --llm-model gpt-5.2 --pose-task-model pose_landmarker_heavy.task --target-action shoulder_flexion_right
 from __future__ import annotations
 
 import argparse
@@ -158,7 +156,12 @@ def print_session_report(history: list):
         posture = item.get("posture_summary", {})
         issues = []
         if posture.get("primary_joint_range") == "insufficient": issues.append("Range")
-        if posture.get("compensation") == "excessive": issues.append("Comp")
+        
+        comp_status = posture.get("compensation", "none")
+        if comp_status != "none":
+            if "trunk_lean" in comp_status: issues.append("Trunk")
+            if "shoulder_hiking" in comp_status: issues.append("Hiking")
+            
         if posture.get("symmetry") == "imbalanced": issues.append("Sym")
         if posture.get("stability") == "unstable": issues.append("Unstable")
 
@@ -256,7 +259,7 @@ def main() -> int:
             summary = output["summary"]
 
             if summary is not None:
-
+                layer3_feedback = None
                 duration = summary.get("segment", {}).get("duration_s", 0.0)
                 if duration < 1.0:
                     print(f"\n[系統提示] 動作片段過短 ({duration} 秒)，視為模型檢測雜訊，略過不計。\n")
@@ -282,8 +285,9 @@ def main() -> int:
                 score_rom = 50 if rom_status == "good" else (35 if rom_status == "acceptable" else 10)
                 
                 # 2. 代償行為得分 (滿分 30)
-                comp_status = posture.get("compensation")
-                score_comp = 30 if comp_status == "none" else (15 if comp_status == "mild" else 0)
+                comp_status = posture.get("compensation", "none")
+                comp_issues_count = len(comp_status.split(",")) if comp_status != "none" else 0
+                score_comp = 30 if comp_issues_count == 0 else (15 if comp_issues_count == 1 else 0)
                 
                 # 3. 穩定度得分 (滿分 20)
                 stab_status = posture.get("stability")
