@@ -1,0 +1,39 @@
+# Per-action ROM reference values.
+#   required_min_deg : actual_rom >= this -> ROM passes
+#   target_deg       : target ROM; phase_rom thresholds derive from this
+
+elbow_flexion_left:
+  required_min_deg: 121.25
+  target_deg: 155.0
+  source_title: Development and Evaluation of a Serious Game-Based Exercise Therapy System
+  source_note: updated_based_on_literature
+elbow_flexion_right:
+  required_min_deg: 121.25
+  target_deg: 155.0
+  source_title: Development and Evaluation of a Serious Game-Based Exercise Therapy System
+  source_note: updated_based_on_literature
+shoulder_flexion_left:
+  required_min_deg: 132.5
+  target_deg: 170.0
+  source_title: Development and Evaluation of a Serious Game-Based Exercise Therapy System
+  source_note: updated_based_on_literature
+shoulder_flexion_right:
+  required_min_deg: 132.5
+  target_deg: 170.0
+  source_title: Development and Evaluation of a Serious Game-Based Exercise Therapy System
+  source_note: updated_based_on_literature
+shoulder_abduction_left:
+  required_min_deg: 132.5
+  target_deg: 170.0
+  source_title: Shoulder range of movement in the general population
+  source_note: updated_based_on_literature
+shoulder_abduction_right:
+  required_min_deg: 132.5
+  target_deg: 170.0
+  source_title: Shoulder range of movement in the general population
+  source_note: updated_based_on_literature
+shoulder_forward_elevation:
+  required_min_deg: 132.5
+  target_deg: 170.0
+  source_title: Development and Evaluation of a Serious Game-Based Exercise Therapy System
+  source_note: updated_based_on_literature

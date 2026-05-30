@@ -1,0 +1,158 @@
+# Posture Correction configuration.
+# ALL numeric thresholds live here — source code must not hard-code them
+# (enforced by tests/test_no_threshold_in_source.py).
+
+project_name: posture-correction
+
+supported_actions:
+  - elbow_flexion_left
+  - elbow_flexion_right
+  - shoulder_flexion_left
+  - shoulder_flexion_right
+  - shoulder_abduction_left
+  - shoulder_abduction_right
+  - shoulder_forward_elevation
+
+pose:
+  enabled: true
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  min_landmark_visibility: 0.6
+  min_landmark_presence: 0.5
+  backend_preference: auto          # auto | solutions | tasks
+  task_model_path: models/pose/pose_landmarker_heavy.task
+  # basis drives ROM / phase-ROM / symmetry / rep-segmentation (kinematics).
+  # compensation_basis drives the compensation evaluator + calibration baseline.
+  # Splitting lets ROM be measured in image-plane 2D (front-facing camera) while
+  # compensation geometry stays in 3D world coords where the proxy metrics
+  # (trunk tilt, shoulder-hip offset) are more stable.
+  basis: 2d                         # 2d = image-plane x/y (production); 3d = world coords
+  compensation_basis: 3d            # 3d keeps compensation stable; change only if re-validated
+  # Symmetry directly compares the LEFT vs RIGHT arm for forward elevation — the
+  # one action where the arms move toward the camera, exactly where image-plane
+  # 2D foreshortening differs per side and fabricates apparent asymmetry. Measure
+  # it in 3D world coords (like compensation) so left/right are comparable.
+  symmetry_basis: 3d
+
+signal:
+  # Physics track: pure sliding-median filter. Feeds the state machine and all
+  # evaluators. The majority property at window=5 discards MediaPipe spikes
+  # without attenuating real motion peaks.
+  median_window: 5
+  # Visualization track: EMA, patient-facing rendering ONLY. Never used by an
+  # evaluator or the state machine.
+  viz_ema_alpha: 0.3
+
+phase_tracker:
+  # Online state machine constants.
+  neutral_confirm_frames: 3
+  neutral_exit_delta_deg: 8.0
+  min_ascent_frames: 3
+  min_peak_frames: 2
+  min_descent_frames: 3
+  peak_confirm_frames: 2
+  missing_grace_frames: 5
+  hysteresis_band_deg: 4.0
+  pause_epsilon_deg: 0.5
+  # Peak band: a sample within peak_tolerance_deg of the running peak counts
+  # as "at peak". Also used to mark peak_start_idx / peak_end_idx.
+  peak_tolerance_deg: 5.0
+  # A frame counts as "neutral" (limb at rest) when the unified primary angle
+  # is at or below this. Resting angle is NOT ~0 for the shoulder actions: the
+  # raw HIP-SHOULDER-ELBOW angle sits ~15-25 deg per side at rest (shoulders are
+  # wider than hips), and forward_elevation takes max(left,right) -> ~20-45 deg.
+  # 50 clears that band; elbow flexion (inverted, rests ~0) is unaffected.
+  neutral_max_deg: 50.0
+  # Onset / completion guards.
+  min_cooldown_s: 0.5
+  max_baseline_deg: 90.0
+  min_dynamic_rom_deg: 30.0
+  min_frames: 8
+
+phase_rom:
+  # Each phase must cover at least this fraction of the target ROM to pass.
+  phase_rom_ratio: 0.75
+
+symmetry:
+  # Two gates: pass requires BOTH.
+  #
+  # 1) Amplitude — clinical Limb Symmetry Index = |L_rom - R_rom| / mean * 100.
+  #    Literature (Physiopedia / Wilke 2020): <=10% symmetric, 10-15% borderline,
+  #    >15% asymmetric; 15% chosen for home-rehab to avoid over-flagging.
+  #    SEED — not yet field-tuned.
+  lsi_max_pct: 15.0                 # LSI at/below this passes
+  lsi_score_best_pct: 5.0           # LSI at/below this scores 100
+  lsi_score_zero_pct: 30.0          # LSI at/above this scores 0
+  # 2) Onset timing — |left onset - right onset| seconds. An arm's onset = first
+  #    time its angular speed stays >= the velocity threshold for
+  #    onset_confirm_frames (first-derivative method, Behrens 2023).
+  #
+  #    Phase 2 (2026-05-26): primary_angle(FE) switched from min(L,R) to
+  #    max(L,R), so the rep window now contains both arms' rises and onsets are
+  #    measured directly on rep.samples (no pre-rep buffer). The phase 1 high
+  #    thresholds (60 deg/s, 5 frames) were needed to suppress buffer noise from
+  #    idle / inter-rep micro-fidgets — rolled back here because rep.samples is
+  #    a clean intra-motion signal. Original SEED reinstated.
+  onset_diff_max_s: 0.3             # onset gap at/below this passes — SEED
+  onset_diff_score_best_s: 0.1      # gap at/below this scores 100 — SEED
+  onset_diff_score_zero_s: 0.6      # gap at/above this scores 0 — SEED
+  onset_velocity_threshold_deg_s: 30.0  # arm-started-moving angular speed — SEED (rolled back from phase 1)
+  onset_confirm_frames: 2           # consecutive over-threshold frames — SEED (rolled back from phase 1)
+  # Legacy: only used when SymmetryEvaluator.pre_rep_window is injected
+  # externally (tests / extreme-lead escape hatch). LiveSession no longer feeds
+  # the buffer in the default flow, so this is inert in live runs.
+  pre_rep_lookback_s: 2.0           # seconds before rep onset to scan — legacy only
+
+compensation:
+  # Rule-based compensation detection (trunk lateral shift + scapular elevation).
+  # Both metrics are measured as an OFFSET from a session-start resting baseline.
+  # Trunk lateral shift (TLS): |trunk tilt - baseline| above this many degrees.
+  trunk_tilt_threshold_deg: 10.0
+  # Scapular elevation (SE): shoulder rise / baseline shoulder width above this.
+  # Lowered for live detection sensitivity; shoulder actions score SE over the
+  # setting phase only (see below), while elbow flexion is evaluated full-rep.
+  shoulder_elevation_threshold_ratio: 0.06
+  # Setting-phase upper bound: for shoulder actions the SE channel is evaluated
+  # ONLY over ascent frames whose primary angle is within this many degrees of
+  # the rep baseline. Past it, scapulohumeral rhythm naturally elevates the
+  # shoulder landmark and the proxy can no longer distinguish a shrug from
+  # normal motion, so it is not scored. Gates both the scored window and the
+  # live readout. Elbow flexion ignores this and is evaluated full-rep.
+  shoulder_elevation_setting_phase_max_deg: 60.0
+  # Trunk lateral shift is confirmed only if its over-threshold run lasts at
+  # least this long. Time, not frames, so the clinical meaning is FPS-independent.
+  min_persist_seconds: 0.3
+  # Scapular elevation persistence. Require a short sustained rise so tracking
+  # noise or natural instantaneous movement does not confirm a shrug.
+  shoulder_elevation_min_persist_seconds: 0.2
+  # A channel needs at least this fraction of the rep's frames with valid
+  # landmarks to be scored; below it the channel reports "unreliable" rather
+  # than guessing across the gaps.
+  min_valid_frame_fraction: 0.5
+  # 0-100 score ramp: value at the trigger threshold scores 100, value at the
+  # *_zero endpoint scores 0 (linear, clamped). Score degrades past the threshold.
+  trunk_tilt_score_zero_deg: 25.0
+  shoulder_elevation_score_zero_ratio: 0.30
+  # A confirmed compensation must cause a visible scoring penalty, even when
+  # the measured peak is only just beyond its detection threshold.
+  failed_score_cap: 50.0
+  baseline:
+    # Session-start calibration. After the user presses R the overlay counts
+    # down this many seconds, then takes the median of target_frames valid
+    # frames as the resting-posture baseline before detection begins.
+    countdown_seconds: 3.0
+    target_frames: 30
+    # Quality control: the calibration is rejected (manual mode re-prompts) if
+    # the resting frames are too unsteady — spread (population stdev) of trunk
+    # tilt / shoulder-hip offset above these limits.
+    max_trunk_tilt_spread_deg: 3.0
+    max_shoulder_offset_spread_ratio: 0.05
+
+paths:
+  rom_reference_path: data/reference/action_references.yaml
+  session_output_dir: data/session_outputs
+
+live:
+  symmetry:
+    history_maxlen: 180
+    chart_y_max_deg: 180.0

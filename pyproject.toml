@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "posture-correction"
+version = "0.1.0"
+description = "Posture Correction: action-aware posture evaluation pipeline (ROM / phase_rom / symmetry / compensation)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+vision = [
+  "mediapipe>=0.10",
+  "opencv-python>=4.10",
+]
+
+[project.scripts]
+posture-correction = "app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["models", "config", "app", "session_output"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+pythonpath = ["src"]
+testpaths = ["tests"]

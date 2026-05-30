@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# 大型模型檔（30MB，不放 git）
+models/pose/*.task
+
+# 執行時產生的輸出
+data/session_outputs/
+out.json
+
+# 依需求排除
+docs/
+logs/
+screenshots/
+tests/
